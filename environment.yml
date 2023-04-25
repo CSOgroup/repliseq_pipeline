@@ -1,0 +1,8 @@
+name: repliseq_pipeline
+channels:
+  - bioconda
+dependencies:
+  - bwa
+  - fastqc
+  - samtools
+  - bedtools

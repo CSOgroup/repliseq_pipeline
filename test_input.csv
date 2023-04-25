@@ -1,0 +1,3 @@
+sample_path,raw_path,genome_assembly,genome_sequence,chromsizes
+data/processed/HTB9_WT_4h,/cso/gred/luca/sample_repliseq_raw_data/HTB9_WT_4h,hg19,/cso/gred/Yuanlong/3.Software_packages/juicer/references/hg19/hg19_chr1_22XYM.fa,/cso/gred/Yuanlong/3.Software_packages/juicer/references/hg19/hg19.chrom.sizes
+data/processed/HTB9_WT_6h,/cso/gred/luca/sample_repliseq_raw_data/HTB9_WT_6h,hg19,/cso/gred/Yuanlong/3.Software_packages/juicer/references/hg19/hg19_chr1_22XYM.fa,/cso/gred/Yuanlong/3.Software_packages/juicer/references/hg19/hg19.chrom.sizes
