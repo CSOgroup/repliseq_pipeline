@@ -55,6 +55,7 @@ get_r1r2_fastq(){
 
 run_fastqc(){
 	qc_path="${fastq_dir}/qc"
+	echo "Running FASTQC"
 	if [[ ! -d ${qc_path} ]]; then
 		mkdir -p ${qc_path}
 		fastqc ${r1_path} ${r2_path} -o ${qc_path}
@@ -79,6 +80,7 @@ alignment(){
 		rm ${bam_path}
 	fi
 	
+	echo "Crearting index"
 	sorted_bam_index_path="${sorted_bam_path}.bai"
 	if [[ ! -e ${sorted_bam_index_path} ]]; then
 		samtools index ${sorted_bam_path} ${sorted_bam_index_path}
@@ -110,6 +112,7 @@ alignment(){
 				${sorted_bam_path} \
 				> ${filtered_bam_path}
 	fi
+
 	filtered_bam_index_path="${filtered_bam_path}.bai"
 	if [[ ! -e ${filtered_bam_index_path} ]]; then
 		samtools index ${filtered_bam_path} ${filtered_bam_index_path}
@@ -133,27 +136,53 @@ alignment(){
 }
 
 coverage(){
+	echo "Computing coverage tracks"
 	signals_path="${sample_path}/signals"
 	mkdir -p ${signals_path}
+
+	echo "- Creating bins"
 	bins_path="${signals_path}/bins_${BINSIZE}.bed"
 	if [[ ! -e ${bins_path} ]]; then
 		bedtools makewindows -w ${BINSIZE} -g ${chromsizes} > ${bins_path}
 	fi
+
+	echo "- Coverage"
 	coverage_path="${signals_path}/$(basename ${sample_path})_coverage.bedGraph"
 	if [[ ! -e ${coverage_path} ]]; then
 		bedtools intersect -c -a ${bins_path} -b ${dedup_bam_path} > ${coverage_path}
 	fi	
-	coverage_filtered_path="${signals_path}/$(basename ${sample_path})_coverage_filtered.bedGraph"
-	if [[ ! -e ${coverage_filtered_path} ]] && [[ ! -z ${blacklisted_regions} ]]; then
-		allowed_regions_path="${signals_path}/allowed_regions.bed"
+
+	echo "- Filtered coverage (without blacklisted regions)"
+	allowed_regions_path="${signals_path}/allowed_regions.bed"
+	if [[ ! -e ${allowed_regions_path} ]]; then
 		bedtools sort -i ${blacklisted_regions} -g ${chromsizes} | \
 				bedtools complement -i stdin -g ${chromsizes} \
 				> ${allowed_regions_path}
-		allowed_regions_bam_path="${signals_path}/allowed_regions.bam"
+	fi
+
+	allowed_regions_bam_path="${signals_path}/allowed_regions.bam"
+	if [[ ! -e ${allowed_regions_bam_path} ]]; then
 		samtools view -@ ${N_THREADS} -L ${allowed_regions_path} -b ${dedup_bam_path} > ${allowed_regions_bam_path}
+	fi
+
+	coverage_filtered_path="${signals_path}/$(basename ${sample_path})_coverage_filtered.bedGraph"
+	if [[ ! -e ${coverage_filtered_path} ]] && [[ ! -z ${blacklisted_regions} ]]; then
 		bedtools intersect -c -a ${bins_path} -b ${allowed_regions_bam_path} > ${coverage_filtered_path}
 		rm ${allowed_regions_path}
 		rm ${allowed_regions_bam_path}
+	fi
+
+	coverate_rpkm_path="${signals_path}/$(basename ${sample_path})_coverage_filtered_RPKM.bedGraph"
+	if [[ ! -e ${coverate_rpkm_path} ]]; then
+		n_reads=$(samtools view -c ${allowed_regions_bam_path})
+		scale_factor=$(echo "1000000/${n_reads}" | bc -l)
+		scale_path="${signals_path}/scale_factors.txt"
+		echo -e "n_reads\t${n_reads}" > ${scale_path}
+		echo -e "scale_factor\t${scale_factor}" >> ${scale_path}
+
+		cat ${coverage_filtered_path} | \
+			awk -v scale=${scale_factor} '{print $1,$2,$3,$4*1000*(scale/($3-$2)) }' OFS='\t' \
+			> $coverate_rpkm_path
 	fi
 }
 

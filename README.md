@@ -45,6 +45,6 @@ You can check the [test_input.csv](./test_input.csv) file for reference.
 ### Steps
 The pipeline will run the following analyses:
 1. Fastq quality control with `fastqc`
-2. Read alignment, sorting and statistics (bwa, samtools)
+2. Read alignment, filtering, sorting and statistics (bwa, samtools)
 3. Read deduplication (samtools)
 4. Computing repli-seq coverage (number of reads) in equally spaced bins (10Kb), giving the output as a `.bedGraph`
