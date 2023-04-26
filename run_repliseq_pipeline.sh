@@ -17,7 +17,10 @@ parse_line(){
 	genome_sequence=$(realpath ${genome_sequence})
 	chromsizes=$(echo $line | cut -d',' -f 5)
 	chromsizes=$(realpath ${chromsizes})
-
+	blacklisted_regions=$(echo $line | cut -d',' -f 6)
+	if [[ ! -z ${blacklisted_regions} ]]; then
+		blacklisted_regions=$(realpath ${blacklisted_regions})
+	fi
 
 	echo "*************************************"
 	echo "- Sample path: ${sample_path}"
@@ -25,6 +28,7 @@ parse_line(){
 	echo "- Assembly: ${genome_assembly}"
 	echo "- Genome sequence: ${genome_sequence}"
 	echo "- Chromosome sizes: ${chromsizes}"
+	echo "- Blacklisted regions: ${blacklisted_regions}"
 	echo "*************************************"
 }
 
@@ -75,16 +79,56 @@ alignment(){
 		rm ${bam_path}
 	fi
 	
+	sorted_bam_index_path="${sorted_bam_path}.bai"
+	if [[ ! -e ${sorted_bam_index_path} ]]; then
+		samtools index ${sorted_bam_path} ${sorted_bam_index_path}
+	fi
+
 	echo "Calculating statistics of the reads"
 	sorted_bam_stats_path="${aligned_path}/$(basename ${sample_path})_sorted.stats"
 	if [[ ! -e ${sorted_bam_stats_path} ]]; then
 		samtools stats ${sorted_bam_path} > ${sorted_bam_stats_path}
 	fi
+
+	echo "Filtering the reads"
+	# Taken from https://github.com/PavriLab/repliseq-nf/blob/master/main.nf
+	# Exclude:
+	# - not primary alignments (0x0100)
+	# - unmapped reads (0x004)
+	# - mate unmapped (0x008)
+	# Inlcude:
+	# - paired reads (0x001)
+	filtered_bam_path="${aligned_path}/$(basename ${sample_path})_sorted_filtered.bam"
+	if [[ ! -e ${filtered_bam_path} ]]; then
+		samtools view -@ ${N_THREADS} \
+					  -F 0x0100 \
+					  -F 0x004 \
+					  -F 0x008 \
+					  -f 0x001 \
+					  -b \
+					  -h \
+				${sorted_bam_path} \
+				> ${filtered_bam_path}
+	fi
+	filtered_bam_index_path="${filtered_bam_path}.bai"
+	if [[ ! -e ${filtered_bam_index_path} ]]; then
+		samtools index ${filtered_bam_path} ${filtered_bam_index_path}
+	fi
 	
 	echo "Removing duplicates from the reads"
 	dedup_bam_path="${aligned_path}/$(basename ${sample_path})_sorted_dedup.bam"
 	if [[ ! -e ${dedup_bam_path} ]]; then
-		samtools rmdup $PAIRARG ${sorted_bam_path} ${dedup_bam_path}
+		samtools rmdup ${filtered_bam_path} ${dedup_bam_path}
+	fi
+
+	dedup_bam_index_path="${dedup_bam_path}.bai"
+	if [[ ! -e ${dedup_bam_index_path} ]]; then
+		samtools index ${dedup_bam_path} ${dedup_bam_index_path}
+	fi
+
+	dedup_bam_stats_path="${aligned_path}/$(basename ${sample_path})_sorted_dedup.stats"
+	if [[ ! -e ${dedup_bam_stats_path} ]]; then
+		samtools stats ${dedup_bam_path} > ${dedup_bam_stats_path}
 	fi
 }
 
@@ -99,6 +143,18 @@ coverage(){
 	if [[ ! -e ${coverage_path} ]]; then
 		bedtools intersect -c -a ${bins_path} -b ${dedup_bam_path} > ${coverage_path}
 	fi	
+	coverage_filtered_path="${signals_path}/$(basename ${sample_path})_coverage_filtered.bedGraph"
+	if [[ ! -e ${coverage_filtered_path} ]] && [[ ! -z ${blacklisted_regions} ]]; then
+		allowed_regions_path="${signals_path}/allowed_regions.bed"
+		bedtools sort -i ${blacklisted_regions} -g ${chromsizes} | \
+				bedtools complement -i stdin -g ${chromsizes} \
+				> ${allowed_regions_path}
+		allowed_regions_bam_path="${signals_path}/allowed_regions.bam"
+		samtools view -@ ${N_THREADS} -L ${allowed_regions_path} -b ${dedup_bam_path} > ${allowed_regions_bam_path}
+		bedtools intersect -c -a ${bins_path} -b ${allowed_regions_bam_path} > ${coverage_filtered_path}
+		rm ${allowed_regions_path}
+		rm ${allowed_regions_bam_path}
+	fi
 }
 
 ############################
