@@ -38,6 +38,7 @@ The `run_repliseq_pipeline.sh` script accepts a .csv file (with header) as input
 - *genome_assembly*: genome assembly (`hg19`, `mm10`, etc...)
 - *genome_sequence*: path to the fasta file for the reference genome
 - *chromsizes*: path to the chromosome sizes file for the reference genome
+- *blacklisted_regions* (optional): path to a BED file containing regions that should be excluded from the analysis (like [these](https://github.com/Boyle-Lab/Blacklist/tree/master/lists))
 
 You can check the [test_input.csv](./test_input.csv) file for reference.
 
